@@ -1,6 +1,5 @@
-import streamlit as st
+import streamlit as pd
 
-st.title("🎈 My new app")
-st.write(
-    "Let's start building! For help and inspiration, head over to [docs.streamlit.io](https://docs.streamlit.io/)."
-)
+url = "https://gist.github.com/f98eb53a97e0108d5bc78c17e55dc169.git"
+
+c = pd.read_csv(url)
