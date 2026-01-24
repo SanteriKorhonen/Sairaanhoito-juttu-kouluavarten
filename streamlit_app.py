@@ -14,15 +14,13 @@ st.set_page_config(
 st.title("🏥 Sairaanhoidon suorakorvaukset 2011–2014")
 st.write(
     """
-    Tämä sovellus visualisoi **sairaanhoidon suorakorvaukset palveluntuottajittain**
-    Suomessa vuosina **2011–2014**.
-
-    Lähde: GitHub Gist (raw CSV)
+    Visualisointi suomalaisesta sairaanhoidon suorakorvausdatasta.
+    Data sisältää epäsäännöllisiä rivejä, jotka käsitellään turvallisesti.
     """
 )
 
 # --------------------------------------------------
-# CSV URL (YOUR FILE)
+# RAW CSV URL (CONFIRMED)
 # --------------------------------------------------
 URL = (
     "https://gist.githubusercontent.com/SanteriKorhonen/"
@@ -32,20 +30,22 @@ URL = (
 )
 
 # --------------------------------------------------
-# Load data (FIXED: encoding + delimiter)
+# Load data (ROBUST MODE)
 # --------------------------------------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv(
         URL,
         sep=";",
-        encoding="latin1"
+        encoding="latin1",
+        engine="python",
+        on_bad_lines="skip"
     )
     return df
 
 df = load_data()
 
-st.success("Data ladattu onnistuneesti ✅")
+st.success("CSV ladattu onnistuneesti ✅")
 
 # --------------------------------------------------
 # Show raw data
@@ -54,40 +54,42 @@ with st.expander("📄 Näytä raakadata"):
     st.dataframe(df, use_container_width=True)
 
 # --------------------------------------------------
-# Clean column names (easier to use)
+# Clean column names
 # --------------------------------------------------
 df.columns = (
     df.columns
-      .str.strip()
-      .str.lower()
-      .str.replace(" ", "_")
-      .str.replace("ä", "a")
-      .str.replace("ö", "o")
+    .str.strip()
+    .str.lower()
+    .str.replace(" ", "_")
+    .str.replace("ä", "a")
+    .str.replace("ö", "o")
 )
 
-# Expected columns after cleaning:
-# palveluntuottaja, vuosi, korvaus_euroa (names inferred safely)
-
 # --------------------------------------------------
-# Column mapping (safe even if names vary slightly)
+# Identify columns safely
 # --------------------------------------------------
 provider_col = [c for c in df.columns if "palvelu" in c][0]
 year_col = [c for c in df.columns if "vuosi" in c][0]
 amount_col = [c for c in df.columns if "korvaus" in c][0]
 
-# Ensure numeric types
+# --------------------------------------------------
+# Convert types
+# --------------------------------------------------
 df[year_col] = pd.to_numeric(df[year_col], errors="coerce")
+
 df[amount_col] = (
     df[amount_col]
     .astype(str)
     .str.replace(",", ".", regex=False)
-    .astype(float)
+    .str.replace(" ", "", regex=False)
 )
+
+df[amount_col] = pd.to_numeric(df[amount_col], errors="coerce")
 
 df = df.dropna(subset=[year_col, amount_col])
 
 # --------------------------------------------------
-# Sidebar filters (like Movies example)
+# Sidebar filters
 # --------------------------------------------------
 st.sidebar.header("🔎 Suodattimet")
 
@@ -105,31 +107,28 @@ years = st.sidebar.slider(
 )
 
 # --------------------------------------------------
-# Filter data
+# Filter & aggregate
 # --------------------------------------------------
-filtered_df = df[
-    (df[provider_col].isin(providers)) &
-    (df[year_col].between(years[0], years[1]))
+filtered = df[
+    df[provider_col].isin(providers)
+    & df[year_col].between(years[0], years[1])
 ]
 
-# --------------------------------------------------
-# Aggregate data
-# --------------------------------------------------
 summary = (
-    filtered_df
+    filtered
     .groupby([year_col, provider_col])[amount_col]
     .sum()
     .reset_index()
 )
 
 # --------------------------------------------------
-# Table output
+# Table
 # --------------------------------------------------
-st.subheader("📊 Yhteenvetotaulukko")
+st.subheader("📊 Yhteenveto")
 st.dataframe(summary, use_container_width=True)
 
 # --------------------------------------------------
-# Chart (Altair line chart)
+# Chart
 # --------------------------------------------------
 st.subheader("📈 Korvaukset vuosittain")
 
