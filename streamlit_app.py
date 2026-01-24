@@ -2,8 +2,11 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 
-st.set_page_config(page_title="Sairaanhoidon korvaukset", layout="wide")
-st.title("🏥 Sairaanhoidon suorakorvaukset")
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
+st.set_page_config(page_title="Mehiläinen Kela-korvaukset", layout="wide")
+st.title("🏥 Mehiläisen Kela-korvaukset (2011–2014)")
 
 # -----------------------------
 # LOAD DATA
@@ -25,7 +28,7 @@ df = load_data(URL)
 # -----------------------------
 # CLEAN COLUMNS
 # -----------------------------
-# Drop Unnamed columns (4–7 and any others)
+# Drop unnamed columns
 df = df.loc[:, ~df.columns.str.startswith("Unnamed")]
 
 # Normalize column names
@@ -38,47 +41,16 @@ df.columns = (
     .str.replace("ö", "o")
 )
 
-st.expander("📄 Raw columns").write(list(df.columns))
-
 # -----------------------------
-# SAFE COLUMN SELECTION
+# SELECT RELEVANT COLUMNS
 # -----------------------------
-st.sidebar.header("⚙️ Column mapping")
-
-def guess_col(keywords):
-    for c in df.columns:
-        for k in keywords:
-            if k in c:
-                return c
-    return None
-
-provider_guess = guess_col(["palvelu", "tuottaja"])
-year_guess = guess_col(["vuosi"])
-amount_guess = guess_col(["korva", "euro", "summa", "maara"])
-
-provider_col = st.sidebar.selectbox(
-    "Palveluntuottaja",
-    df.columns,
-    index=df.columns.get_loc(provider_guess) if provider_guess else 0
-)
-
-year_col = st.sidebar.selectbox(
-    "Vuosi",
-    df.columns,
-    index=df.columns.get_loc(year_guess) if year_guess else 0
-)
-
-amount_col = st.sidebar.selectbox(
-    "Korvaus (€)",
-    df.columns,
-    index=df.columns.get_loc(amount_guess) if amount_guess else 0
-)
+provider_col = "palveluntuottaja" if "palveluntuottaja" in df.columns else df.columns[0]
+year_col = "vuosi" if "vuosi" in df.columns else df.columns[1]
+amount_col = "korvaus" if "korvaus" in df.columns else df.columns[2]
 
 # -----------------------------
 # TYPE CLEANING
 # -----------------------------
-df = df.copy()
-
 df[year_col] = pd.to_numeric(df[year_col], errors="coerce")
 
 df[amount_col] = (
@@ -92,22 +64,27 @@ df[amount_col] = pd.to_numeric(df[amount_col], errors="coerce")
 df = df.dropna(subset=[year_col, amount_col])
 
 # -----------------------------
-# FILTERS
+# FILTER FOR MEHILÄINEN AND YEARS 2011–2014
 # -----------------------------
-years = sorted(df[year_col].unique())
-year = st.sidebar.selectbox("Select year", years)
+df_mehilainen = df[
+    (df[provider_col].str.contains("Mehiläinen", case=False)) &
+    (df[year_col].between(2011, 2014))
+]
 
 # -----------------------------
-# AGGREGATE
+# AGGREGATE BY YEAR
 # -----------------------------
 year_df = (
-    df[df[year_col] == year]
-    .groupby(provider_col, as_index=False)[amount_col]
+    df_mehilainen
+    .groupby(year_col, as_index=False)[amount_col]
     .sum()
-    .sort_values(amount_col, ascending=False)
+    .sort_values(year_col)
 )
 
-st.subheader(f"📊 Korvaukset vuonna {int(year)}")
+# -----------------------------
+# SHOW TABLE
+# -----------------------------
+st.subheader("📊 Korvaukset vuosittain")
 st.dataframe(year_df, use_container_width=True)
 
 # -----------------------------
@@ -115,11 +92,11 @@ st.dataframe(year_df, use_container_width=True)
 # -----------------------------
 bar = (
     alt.Chart(year_df)
-    .mark_bar()
+    .mark_bar(color="#1f77b4")
     .encode(
-        x=alt.X(f"{provider_col}:N", sort="-y", title="Palveluntuottaja"),
+        x=alt.X(f"{year_col}:O", title="Vuosi"),
         y=alt.Y(f"{amount_col}:Q", title="Korvaus (€)"),
-        tooltip=[provider_col, amount_col]
+        tooltip=[year_col, amount_col]
     )
     .properties(height=400)
 )
@@ -131,11 +108,11 @@ st.altair_chart(bar, use_container_width=True)
 # -----------------------------
 pie = (
     alt.Chart(year_df)
-    .mark_arc()
+    .mark_arc(innerRadius=50)
     .encode(
         theta=alt.Theta(f"{amount_col}:Q"),
-        color=alt.Color(f"{provider_col}:N"),
-        tooltip=[provider_col, amount_col]
+        color=alt.Color(f"{year_col}:N", legend=None),
+        tooltip=[year_col, amount_col]
     )
     .properties(height=400)
 )
