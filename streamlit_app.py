@@ -2,60 +2,33 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 
-# --------------------------------------------------
-# Page setup
-# --------------------------------------------------
-st.set_page_config(
-    page_title="Sairaanhoidon suorakorvaukset",
-    page_icon="🏥",
-    layout="wide"
-)
+st.set_page_config(page_title="Sairaanhoidon korvaukset", layout="wide")
+st.title("🏥 Sairaanhoidon suorakorvaukset")
 
-st.title("🏥 Sairaanhoidon suorakorvaukset 2011–2014")
-st.write(
-    """
-    Visualisointi suomalaisesta sairaanhoidon suorakorvausdatasta.
-    Data sisältää epäsäännöllisiä rivejä, jotka käsitellään turvallisesti.
-    """
-)
+# -----------------------------
+# LOAD DATA
+# -----------------------------
+URL = "https://gist.githubusercontent.com/SanteriKorhonen/f98eb53a97e0108d5bc78c17e55dc169/raw/e831683e187130a7dd908cb3cb0dd824c7dadb3f/sairaanhoidon-suorakorvaukset-palveluntuottajittain-v-2011-2014"
 
-# --------------------------------------------------
-# RAW CSV URL (CONFIRMED)
-# --------------------------------------------------
-URL = (
-    "https://gist.githubusercontent.com/SanteriKorhonen/"
-    "f98eb53a97e0108d5bc78c17e55dc169/raw/"
-    "e831683e187130a7dd908cb3cb0dd824c7dadb3f/"
-    "sairaanhoidon-suorakorvaukset-palveluntuottajittain-v-2011-2014"
-)
-
-# --------------------------------------------------
-# Load data (ROBUST MODE)
-# --------------------------------------------------
 @st.cache_data
-def load_data():
-    df = pd.read_csv(
-        URL,
+def load_data(url):
+    return pd.read_csv(
+        url,
         sep=";",
         encoding="latin1",
         engine="python",
         on_bad_lines="skip"
     )
-    return df
 
-df = load_data()
+df = load_data(URL)
 
-st.success("CSV ladattu onnistuneesti ✅")
+# -----------------------------
+# CLEAN COLUMNS
+# -----------------------------
+# Drop Unnamed columns (4–7 and any others)
+df = df.loc[:, ~df.columns.str.startswith("Unnamed")]
 
-# --------------------------------------------------
-# Show raw data
-# --------------------------------------------------
-with st.expander("📄 Näytä raakadata"):
-    st.dataframe(df, use_container_width=True)
-
-# --------------------------------------------------
-# Clean column names
-# --------------------------------------------------
+# Normalize column names
 df.columns = (
     df.columns
     .str.strip()
@@ -65,83 +38,106 @@ df.columns = (
     .str.replace("ö", "o")
 )
 
-# --------------------------------------------------
-# Identify columns safely
-# --------------------------------------------------
-provider_col = [c for c in df.columns if "palvelu" in c][0]
-year_col = [c for c in df.columns if "vuosi" in c][0]
-amount_col = [c for c in df.columns if "korvaus" in c][0]
+st.expander("📄 Raw columns").write(list(df.columns))
 
-# --------------------------------------------------
-# Convert types
-# --------------------------------------------------
+# -----------------------------
+# SAFE COLUMN SELECTION
+# -----------------------------
+st.sidebar.header("⚙️ Column mapping")
+
+def guess_col(keywords):
+    for c in df.columns:
+        for k in keywords:
+            if k in c:
+                return c
+    return None
+
+provider_guess = guess_col(["palvelu", "tuottaja"])
+year_guess = guess_col(["vuosi"])
+amount_guess = guess_col(["korva", "euro", "summa", "maara"])
+
+provider_col = st.sidebar.selectbox(
+    "Palveluntuottaja",
+    df.columns,
+    index=df.columns.get_loc(provider_guess) if provider_guess else 0
+)
+
+year_col = st.sidebar.selectbox(
+    "Vuosi",
+    df.columns,
+    index=df.columns.get_loc(year_guess) if year_guess else 0
+)
+
+amount_col = st.sidebar.selectbox(
+    "Korvaus (€)",
+    df.columns,
+    index=df.columns.get_loc(amount_guess) if amount_guess else 0
+)
+
+# -----------------------------
+# TYPE CLEANING
+# -----------------------------
+df = df.copy()
+
 df[year_col] = pd.to_numeric(df[year_col], errors="coerce")
 
 df[amount_col] = (
     df[amount_col]
     .astype(str)
+    .str.replace(r"[^\d,.-]", "", regex=True)
     .str.replace(",", ".", regex=False)
-    .str.replace(" ", "", regex=False)
 )
-
 df[amount_col] = pd.to_numeric(df[amount_col], errors="coerce")
 
 df = df.dropna(subset=[year_col, amount_col])
 
-# --------------------------------------------------
-# Sidebar filters
-# --------------------------------------------------
-st.sidebar.header("🔎 Suodattimet")
+# -----------------------------
+# FILTERS
+# -----------------------------
+years = sorted(df[year_col].unique())
+year = st.sidebar.selectbox("Select year", years)
 
-providers = st.sidebar.multiselect(
-    "Palveluntuottaja",
-    sorted(df[provider_col].unique()),
-    default=sorted(df[provider_col].unique())[:5]
-)
-
-years = st.sidebar.slider(
-    "Vuodet",
-    int(df[year_col].min()),
-    int(df[year_col].max()),
-    (2011, 2014)
-)
-
-# --------------------------------------------------
-# Filter & aggregate
-# --------------------------------------------------
-filtered = df[
-    df[provider_col].isin(providers)
-    & df[year_col].between(years[0], years[1])
-]
-
-summary = (
-    filtered
-    .groupby([year_col, provider_col])[amount_col]
+# -----------------------------
+# AGGREGATE
+# -----------------------------
+year_df = (
+    df[df[year_col] == year]
+    .groupby(provider_col, as_index=False)[amount_col]
     .sum()
-    .reset_index()
+    .sort_values(amount_col, ascending=False)
 )
 
-# --------------------------------------------------
-# Table
-# --------------------------------------------------
-st.subheader("📊 Yhteenveto")
-st.dataframe(summary, use_container_width=True)
+st.subheader(f"📊 Korvaukset vuonna {int(year)}")
+st.dataframe(year_df, use_container_width=True)
 
-# --------------------------------------------------
-# Chart
-# --------------------------------------------------
-st.subheader("📈 Korvaukset vuosittain")
-
-chart = (
-    alt.Chart(summary)
-    .mark_line(point=True)
+# -----------------------------
+# BAR CHART
+# -----------------------------
+bar = (
+    alt.Chart(year_df)
+    .mark_bar()
     .encode(
-        x=alt.X(f"{year_col}:O", title="Vuosi"),
+        x=alt.X(f"{provider_col}:N", sort="-y", title="Palveluntuottaja"),
         y=alt.Y(f"{amount_col}:Q", title="Korvaus (€)"),
-        color=alt.Color(f"{provider_col}:N", title="Palveluntuottaja"),
-        tooltip=[year_col, provider_col, amount_col]
+        tooltip=[provider_col, amount_col]
     )
     .properties(height=400)
 )
 
-st.altair_chart(chart, use_container_width=True)
+st.altair_chart(bar, use_container_width=True)
+
+# -----------------------------
+# PIE CHART
+# -----------------------------
+pie = (
+    alt.Chart(year_df)
+    .mark_arc()
+    .encode(
+        theta=alt.Theta(f"{amount_col}:Q"),
+        color=alt.Color(f"{provider_col}:N"),
+        tooltip=[provider_col, amount_col]
+    )
+    .properties(height=400)
+)
+
+st.altair_chart(pie, use_container_width=True)
