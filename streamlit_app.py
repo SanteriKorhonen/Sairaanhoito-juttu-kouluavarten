@@ -9,7 +9,7 @@ import requests
 # ------------------------------
 # Put your original URL here:
 # (I left it exactly as in your message)
-url = "https://gist.github.com/f98eb53a97e0108d5bc78c17e55dc169.git"
+url = "https://gist.githubusercontent.com/SanteriKorhonen/f98eb53a97e0108d5bc78c17e55dc169/raw/e831683e187130a7dd908cb3cb0dd824c7dadb3f/sairaanhoidon-suorakorvaukset-palveluntuottajittain-v-2011-2014"
 # ------------------------------
 
 # Optional: create a simple Streamlit theme config file so the app uses a consistent theme.
