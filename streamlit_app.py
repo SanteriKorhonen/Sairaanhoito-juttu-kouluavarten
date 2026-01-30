@@ -8,8 +8,7 @@ st.title("🏥 Sairaanhoidon suorakorvaukset")
 # -----------------------------
 # LOAD DATA
 # -----------------------------
-URL = "https://gist.githubusercontent.com/SanteriKorhonen/f98eb53a97e0108d5bc78c17e55dc169/raw/e831683e187130a7dd908cb3cb0dd824c7dadb3f/sairaanhoidon-suorakorvaukset-palveluntuottajittain-v-2011-2014"
-
+URL = "https://gist.githubusercontent.com/SanteriKorhonen/121b457471e9aff0c1a17d606d53e2ae/raw/12007ce1962d0160f2b92fa9264d29a7835fffec/sairaanhoidon-suorakorvaukset-palveluntuottajittain-v-2011.csv"
 @st.cache_data
 def load_data(url):
     return pd.read_csv(
